@@ -5,16 +5,59 @@ import { Transaction, TransactionInput, TransactionOutput } from '../types';
  * @param {Transaction} transaction - The transaction to encode
  * @returns {Buffer} The binary representation
  */
+
+// === Helpers compactos 
+const u8 = (n: number) => { const b = Buffer.alloc(1); b.writeUInt8(n); return b; };
+const u16 = (n: number) => { const b = Buffer.alloc(2); b.writeUInt16BE(n); return b; };
+const u32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n >>> 0); return b; };
+const u64 = (n: number | bigint) => {
+  const v = BigInt(n);
+  const b = Buffer.alloc(8);
+  b.writeUInt32BE(Number((v >> 32n) & 0xffffffffn), 0);
+  b.writeUInt32BE(Number(v & 0xffffffffn), 4);
+  return b;
+};
+const strW = (s: string) => { const bs = Buffer.from(s, 'utf8'); return Buffer.concat([u32(bs.length), bs]); };
+
+function u8R(buf: Buffer, o: number) { return [buf.readUInt8(o), o + 1] as const; }
+function u16R(buf: Buffer, o: number) { return [buf.readUInt16BE(o), o + 2] as const; }
+function u32R(buf: Buffer, o: number) { return [buf.readUInt32BE(o), o + 4] as const; }
+function u64R(buf: Buffer, o: number) {
+  const hi = BigInt(buf.readUInt32BE(o)), lo = BigInt(buf.readUInt32BE(o + 4));
+  return [Number((hi << 32n) + lo), o + 8] as const;
+}
+function strR(buf: Buffer, o: number) {
+  const [len, o2] = u32R(buf, o);
+  return [buf.toString('utf8', o2, o2 + len), o2 + len] as const;
+}
+
+
 export function encodeTransaction(transaction: Transaction): Buffer {
-  // BONUS CHALLENGE: Implement binary encoding for transactions
-  // This should create a compact binary representation instead of JSON
+  const parts: Buffer[] = [];
 
-  // Suggested approach:
-  // 1. Use fixed-size fields where possible (e.g., 8 bytes for amounts, timestamps)
-  // 2. Use length-prefixed strings for variable-length data (id, signatures, public keys)
-  // 3. Use compact representations for counts (e.g., 1 byte for number of inputs/outputs if < 256)
+  // id + timestamp
+  parts.push(strW(transaction.id), u64(transaction.timestamp));
 
-  throw new Error('Binary encoding not implemented - this is a bonus challenge!');
+  // inputs
+  const ins = transaction.inputs ?? [];
+  parts.push(u8(ins.length));
+  for (const i of ins) {
+    parts.push(
+      strW(i.utxoId.txId),
+      u32(i.utxoId.outputIndex),
+      strW(i.owner),
+      strW(i.signature),
+    );
+  }
+
+  // outputs
+  const outs = transaction.outputs ?? [];
+  parts.push(u8(outs.length));
+  for (const o of outs) {
+    parts.push(u64(o.amount), strW(o.recipient));
+  }
+
+  return Buffer.concat(parts);
 }
 
 /**
@@ -23,10 +66,36 @@ export function encodeTransaction(transaction: Transaction): Buffer {
  * @returns {Transaction} The reconstructed transaction object
  */
 export function decodeTransaction(buffer: Buffer): Transaction {
-  // BONUS CHALLENGE: Implement binary decoding for transactions
-  // This should reconstruct a Transaction object from the binary representation
+  let o = 0;
 
-  throw new Error('Binary decoding not implemented - this is a bonus challenge!');
+  let s;[s, o] = strR(buffer, o);           
+  // id
+  const id = s;
+
+  let t;[t, o] = u64R(buffer, o);           
+  // timestamp
+  const timestamp = t;
+
+  let c;[c, o] = u8R(buffer, o);            
+  // inputs count
+  const inputs = Array.from({ length: c }, () => {
+    let txId;[txId, o] = strR(buffer, o);
+    let outIdx;[outIdx, o] = u32R(buffer, o);
+    let owner;[owner, o] = strR(buffer, o);
+    let sig;[sig, o] = strR(buffer, o);
+    return { utxoId: { txId, outputIndex: outIdx }, owner, signature: sig };
+  });
+
+  [c, o] = u8R(buffer, o);                    
+  // outputs count
+  const outputs = Array.from({ length: c }, () => {
+    let amount;[amount, o] = u64R(buffer, o);
+    let recipient;[recipient, o] = strR(buffer, o);
+    return { amount, recipient };
+  });
+
+  return { id, inputs, outputs, timestamp };
+
 }
 
 /**
