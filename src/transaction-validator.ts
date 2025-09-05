@@ -19,14 +19,13 @@ export class TransactionValidator {
   validateTransaction(transaction: Transaction): ValidationResult {
     const errors: ValidationError[] = [];
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+    this.checkEmpty(transaction, errors);
+    this.checkDoubleSpendingAndExistence(transaction, errors);
+    this.checkSignatures(transaction, errors);
+    this.checkOutputs(transaction, errors);
+    this.checkBalance(transaction, errors);
 
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+    return { valid: errors.length === 0, errors };
   }
 
   /**
@@ -47,5 +46,97 @@ export class TransactionValidator {
     };
 
     return JSON.stringify(unsignedTx);
+  }
+
+  /* --------------------------------- Helpers -------------------------------- */
+
+  private isEmpty(list: any[]): boolean {
+    if (!list || list.length === 0) {
+      return true;
+    }
+    return false;
+  }
+
+  private checkEmpty(transaction: Transaction, errors: ValidationError[]) {
+    if (this.isEmpty(transaction.inputs)) {
+      errors.push(createValidationError(VALIDATION_ERRORS.EMPTY_INPUTS, 'La transaccion no tiene entradas'));
+    }
+    if (this.isEmpty(transaction.outputs)) {
+      errors.push(createValidationError(VALIDATION_ERRORS.EMPTY_OUTPUTS, 'La transaccion no tiene salidas'));
+    }
+  }
+
+  private checkDoubleSpendingAndExistence(transaction: Transaction, errors: ValidationError[]) {
+    const seen = new Set<string>();
+
+    const inputs = transaction.inputs;
+    for (let input of inputs) {
+      const key = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
+      if (seen.has(key)) {
+        errors.push(
+          createValidationError(VALIDATION_ERRORS.DOUBLE_SPENDING, `Entrada duplicada ${key}`)
+        );
+      }
+
+      seen.add(key);
+
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (!utxo) {
+        errors.push(createValidationError(VALIDATION_ERRORS.UTXO_NOT_FOUND, 'UTXO no encontrado'));
+      }
+    }
+  }
+
+  private checkSignatures(transaction: Transaction, errors: ValidationError[]) {
+    const data = this.createTransactionDataForSigning_(transaction);
+    const inputs = transaction.inputs;
+    for (let input of inputs) {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (!utxo) continue;
+
+      const valid = verify(data, input.signature, utxo.recipient);
+      if (!valid) {
+        errors.push(
+          createValidationError(
+            VALIDATION_ERRORS.INVALID_SIGNATURE,
+            `Firma inválida para UTXO: txId=${input.utxoId.txId}, outputIndex=${input.utxoId.outputIndex}`
+          )
+        );
+      }
+    }
+  }
+
+  private checkOutputs(transaction: Transaction, errors: ValidationError[]) {
+    const outputs = transaction.outputs;
+    for (let output of outputs) {
+      if (output.amount <= 0) {
+        errors.push(createValidationError(VALIDATION_ERRORS.NEGATIVE_AMOUNT, `Salida negativa`));
+      }
+    }
+  }
+
+  private checkBalance(transaction: Transaction, errors: ValidationError[]) {
+    let sumInputs = 0;
+    let sumOutputs = 0;
+    const inputs = transaction.inputs;
+    const outputs = transaction.outputs;
+
+    for (let input of inputs) {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (utxo) sumInputs += utxo.amount;
+    }
+
+    for (const output of outputs) {
+      sumOutputs += output.amount;
+    }
+
+    if (sumInputs !== sumOutputs) {
+      errors.push(
+        createValidationError(
+          VALIDATION_ERRORS.AMOUNT_MISMATCH,
+          `Suma entradas (${sumInputs}) != suma salidas (${sumOutputs})`
+        )
+      );
+    }
   }
 }
