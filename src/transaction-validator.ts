@@ -17,11 +17,87 @@ export class TransactionValidator {
    * @returns {ValidationResult} The validation result
    */
   validateTransaction(transaction: Transaction): ValidationResult {
-    const errors: ValidationError[] = [];
+    const errors: ValidationError[] = []
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+     // Verificar que la transacción tenga al menos una entradA
+    if (transaction.inputs.length === 0 ) {
+      errors.push(createValidationError(
+        VALIDATION_ERRORS.EMPTY_INPUTS,
+        'La transacción no tiene entradas'
+      ));
+    }
+
+     // Verificar que la transacción tenga al menos una salida
+    if (transaction.outputs.length === 0) {
+      errors.push(createValidationError(
+        VALIDATION_ERRORS.EMPTY_OUTPUTS,
+        'La transacción no tiene salidas'
+      ));
+    }
+
+    // Verificar que la transacción no tengo UTXO repetidos
+    const used: string[] = [];
+    for (const input of transaction.inputs) {
+      const utxoKey = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
+      if (used.includes(utxoKey)) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.DOUBLE_SPENDING,
+          `UTXO duplicado: txId=${input.utxoId.txId}, outputIndex=${input.utxoId.outputIndex}`
+        ));
+      }
+      used.push(utxoKey);
+    }
+
+    let totalInput = 0;
+
+    for (const input of transaction.inputs) {
+       const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+       //lanzar error si UTXO no existe
+       if (!utxo) {
+          errors.push(createValidationError(
+          VALIDATION_ERRORS.UTXO_NOT_FOUND,
+          `UTXO no encontrado para txId=${input.utxoId.txId}, outputIndex=${input.utxoId.outputIndex}`
+        ));
+      }
+      else{
+        // Verificar que sea la firma correcta
+       totalInput += utxo.amount;
+       const transactionData  = this.createTransactionDataForSigning_(transaction);
+       const isValid  = verify(transactionData , input.signature, input.owner);
+      if (!isValid ) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.INVALID_SIGNATURE,
+          `Firma inválida para input de txId=${input.utxoId.txId}, outputIndex=${input.utxoId.outputIndex}`
+        ));
+      }
+      }
+    }
+
+    let totalOutput = 0;
+    for (const output of transaction.outputs) {
+      totalOutput += output.amount;
+       // si la transaccion tiene salida negativa lanzar error
+      if (output.amount < 0) {
+        errors.push(createValidationError(
+        VALIDATION_ERRORS.NEGATIVE_AMOUNT,
+        `Output inválido con monto negativo ${output.amount} para recipient=${output.recipient}`
+        ));
+      } else 
+       // si la transaccion tiene salida cero lanzar error
+      if (output.amount === 0) {
+        errors.push(createValidationError(
+        VALIDATION_ERRORS.ZERO_AMOUNT,
+        `Output inválido con monto cero para recipient=${output.recipient}`
+        ));
+      }
+    }
+  // Verificar que la transacción tenga misma cantidad de entrada que de salida
+    if(totalInput != totalOutput){
+        errors.push(createValidationError(
+        VALIDATION_ERRORS.AMOUNT_MISMATCH,
+      `Suma de entradas (${totalInput}) no coincide con suma de salidas (${totalOutput})`
+        ));
+    }
 
     return {
       valid: errors.length === 0,
