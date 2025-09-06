@@ -19,10 +19,85 @@ export class TransactionValidator {
   validateTransaction(transaction: Transaction): ValidationResult {
     const errors: ValidationError[] = [];
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+    // Verificación de Existencia de UTXO
+    // Verificar que todas las entradas de transacción referencien UTXOs existentes y no gastados
+    for (const input of transaction.inputs){
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (!utxo) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.UTXO_NOT_FOUND,
+          `UTXO not found: ${input.utxoId.txId}:${input.utxoId.outputIndex}`
+        ));
+      }
+    }
 
+    // Verificación de Balance
+    // Asegurar que la suma de montos de entrada igualen la suma de montos de salida
+
+    let totalInput = 0;
+    for (const input of transaction.inputs) {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (utxo) totalInput += utxo.amount;
+    }
+
+    let totalOutput = 0;
+    for (const output of transaction.outputs) {
+      if (output.amount < 0) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.NEGATIVE_AMOUNT,
+          `Negative output amount: ${output.amount}`
+        ));
+      } else if (output.amount === 0) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.ZERO_AMOUNT,
+          `Zero output amount not allowed`
+        ));
+      }
+
+      totalOutput += output.amount;
+    }
+
+
+
+    if (totalInput !== totalOutput) {
+      errors.push(createValidationError(
+        VALIDATION_ERRORS.AMOUNT_MISMATCH,
+        `Input amount (${totalInput}) does not match output amount (${totalOutput})`
+      ));
+    }
+
+    // Verificación de Firma
+    // Verificar que cada entrada esté firmada por el propietario del UTXO correspondiente
+    const dataToSign = this.createTransactionDataForSigning_(transaction);
+    for (const input of transaction.inputs) {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (utxo) {
+        const isValid = verify(dataToSign, input.signature, utxo.recipient);
+        if (!isValid) {
+          errors.push(createValidationError(
+            VALIDATION_ERRORS.INVALID_SIGNATURE,
+            `Invalid signature for input referencing UTXO ${input.utxoId.txId}:${input.utxoId.outputIndex}`
+          ));
+        }
+      }
+    }
+    
+    // Prevención de Doble Gasto
+    // Asegurar que ningún UTXO sea referenciado múltiples veces dentro de la misma transacción
+    const referencedUTXOs: string[] = [];
+    for (const input of transaction.inputs) {
+      const utxoKey = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
+      if (referencedUTXOs.includes(utxoKey)) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.DOUBLE_SPENDING,
+          `UTXO referenced multiple times in transaction: ${utxoKey}`
+        ));
+      } else {
+        referencedUTXOs.push(utxoKey);
+      }
+    }
+
+    
     return {
       valid: errors.length === 0,
       errors
