@@ -5,6 +5,7 @@ import { TransactionBuilder } from '../transaction-builder';
 import { TransactionValidator } from '../transaction-validator';
 import { Transaction, UTXO } from '../types';
 import { VALIDATION_ERRORS } from '../errors';
+import { getEncodingEfficiency } from '../utils/binary-encoding';
 
 describe('UTXO System Tests', () => {
   let utxoPool: UTXOPoolManager;
@@ -253,13 +254,13 @@ describe('UTXO System Tests', () => {
 
         const result = validator.validateTransaction(transaction);
         expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.NEGATIVE_AMOUNT)).toBe(true);
+        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.ZERO_AMOUNT_OUTPUTS)).toBe(true);
       });
     });
 
     // 💡 BONUS CHALLENGE: Binary Encoding
     // Uncomment the describe.skip line below (remove .skip) when you're ready to implement binary encoding!
-    describe.skip('Binary Encoding', () => {
+    describe('Binary Encoding', () => {
       test('BONUS: should encode and decode transactions correctly', () => {
         const aliceUTXOs = utxoPool.getUTXOsForOwner(alice.publicKey);
         const transaction = TransactionBuilder.createTransaction(
@@ -274,7 +275,14 @@ describe('UTXO System Tests', () => {
         const decoded = BinaryEncoder.decodeTransaction(encoded);
 
         expect(decoded).toEqual(transaction);
+
+        // Chequeo de eficiencia
+        const efficiency = getEncodingEfficiency(transaction);
+        console.log('JSON size:', efficiency.jsonSize, 'bytes');
+        console.log('Binary size:', efficiency.binarySize, 'bytes'); 
+        console.log('Space savings:', efficiency.savings);
       });
     });
+    
   });
 });

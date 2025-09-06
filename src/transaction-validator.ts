@@ -18,16 +18,60 @@ export class TransactionValidator {
    */
   validateTransaction(transaction: Transaction): ValidationResult {
     const errors: ValidationError[] = [];
+    
+    let totalInputAmount = 0;
+    let totalOutputAmount = 0;
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+    const usedUTXOs = new Set<string>();
+    
+    for (const input of transaction.inputs) {
+      const utxoKey = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
 
+      // Verificar doble existencia usando el set
+      if (usedUTXOs.has(utxoKey)) {
+        errors.push(createValidationError(VALIDATION_ERRORS.DOUBLE_SPENDING,`UTXO ${utxoKey} usado múltiples veces`));
+        continue;
+      }
+      usedUTXOs.add(utxoKey);
+
+      // Verificar existencia en el pool
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+
+      if (!utxo) {
+        errors.push(createValidationError(VALIDATION_ERRORS.UTXO_NOT_FOUND, `${input.utxoId.txId}:${input.utxoId.outputIndex}`));
+        continue;
+      }
+
+      // Verificar firma
+      const transactionData = this.createTransactionDataForSigning_(transaction);
+      const isValid = verify(transactionData, input.signature, utxo.recipient);
+      if(!isValid) {
+        errors.push(createValidationError(VALIDATION_ERRORS.INVALID_SIGNATURE, `UTXO: ${input.utxoId.txId}:${input.utxoId.outputIndex}`));
+        continue;
+      }
+
+      totalInputAmount += utxo.amount;
+    }
+    
+    for (const output of transaction.outputs) { 
+      // Validar que las salidas no sean cero
+      if (output.amount == 0) {
+        errors.push(createValidationError(VALIDATION_ERRORS.ZERO_AMOUNT_OUTPUTS, `Output amount must not be 0: ${output.amount}`));
+      }
+      totalOutputAmount += output.amount;      
+    }
+    
+    // Validar que el total de entradas sea igual al total de salidas
+    if(totalInputAmount !== totalOutputAmount) {
+      errors.push(createValidationError(VALIDATION_ERRORS.AMOUNT_MISMATCH, `Input total: ${totalInputAmount}, Output total: ${totalOutputAmount}`));
+    }
+      
     return {
       valid: errors.length === 0,
       errors
     };
   }
+
 
   /**
    * Create a deterministic string representation of the transaction for signing
