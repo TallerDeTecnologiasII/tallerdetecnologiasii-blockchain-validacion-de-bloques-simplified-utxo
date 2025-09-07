@@ -19,9 +19,59 @@ export class TransactionValidator {
   validateTransaction(transaction: Transaction): ValidationResult {
     const errors: ValidationError[] = [];
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+    let totalInput = 0;
+    let totalOutput = 0;
+
+    // 1. Verificación de Existencia de UTXO
+    for (const input of transaction.inputs) {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (!utxo) {
+        const error: ValidationError = createValidationError(VALIDATION_ERRORS.UTXO_NOT_FOUND, `UTXO not found: ${input.utxoId.txId}:${input.utxoId.outputIndex}`);
+        errors.push(error);
+      } else {
+          totalInput += utxo.amount; // sumamos al total de los inputs (2)
+      }
+    }
+
+    // Verificación de outputs
+
+    for (const output of transaction.outputs) {
+      if (output.amount <= 0) {
+        const error: ValidationError = createValidationError(VALIDATION_ERRORS.INVALID_OUTPUT_AMOUNT, `Invalid output amount: ${output.amount}`);
+        errors.push(error);
+      }
+    }
+
+    // 2. Verificación de Balance
+    
+    totalOutput = transaction.outputs.reduce((total, utxo) => total + utxo.amount, 0);
+
+    if (totalInput !== totalOutput) {
+      const error: ValidationError = createValidationError(VALIDATION_ERRORS.AMOUNT_MISMATCH, `Input amounts do not match output amounts`);
+      errors.push(error);
+    }
+
+    // 3. Verificación de Firma
+    for (const input of transaction.inputs) {
+      const transactionData = this.createTransactionDataForSigning_(transaction);
+      const isValid = verify(transactionData, input.signature, input.owner);
+      if (!isValid) {
+        const error: ValidationError = createValidationError(VALIDATION_ERRORS.INVALID_SIGNATURE, `Invalid signature for input: ${input.utxoId.txId}:${input.utxoId.outputIndex}`);
+        errors.push(error);
+      }
+    }
+
+    // 4. Prevención de Doble Gastos
+    const seenUTXOs = new Set<string>();
+
+    for (const input of transaction.inputs) {
+      const utxoId = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
+      if (seenUTXOs.has(utxoId)) {
+        const error: ValidationError = createValidationError(VALIDATION_ERRORS.DOUBLE_SPENDING, `UTXO already spent: ${utxoId}`);
+        errors.push(error);
+      }
+      seenUTXOs.add(utxoId);
+    }
 
     return {
       valid: errors.length === 0,

@@ -253,13 +253,13 @@ describe('UTXO System Tests', () => {
 
         const result = validator.validateTransaction(transaction);
         expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.NEGATIVE_AMOUNT)).toBe(true);
+        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.INVALID_OUTPUT_AMOUNT)).toBe(true);
       });
     });
 
     // 💡 BONUS CHALLENGE: Binary Encoding
     // Uncomment the describe.skip line below (remove .skip) when you're ready to implement binary encoding!
-    describe.skip('Binary Encoding', () => {
+    describe('Binary Encoding', () => {
       test('BONUS: should encode and decode transactions correctly', () => {
         const aliceUTXOs = utxoPool.getUTXOsForOwner(alice.publicKey);
         const transaction = TransactionBuilder.createTransaction(
