@@ -30,8 +30,8 @@ export class TransactionValidator {
       !this.hasError({ errors, code: VALIDATION_ERRORS.UTXO_NOT_FOUND }) &&
       !this.hasError({ errors, code: VALIDATION_ERRORS.DOUBLE_SPENDING })
     ) {
-      this.verifyBalance({ transaction, errors });
       this.verifySignatures({ transaction, errors });
+      this.verifyBalance({ transaction, errors });
     }
 
     return {
