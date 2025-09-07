@@ -9,7 +9,7 @@ import {
 } from './errors';
 
 export class TransactionValidator {
-  constructor(private utxoPool: UTXOPoolManager) {}
+  constructor(private utxoPool: UTXOPoolManager) { }
 
   /**
    * Validate a transaction
@@ -19,9 +19,64 @@ export class TransactionValidator {
   validateTransaction(transaction: Transaction): ValidationResult {
     const errors: ValidationError[] = [];
 
-    // STUDENT ASSIGNMENT: Implement the validation logic above
-    // Remove this line and implement the actual validation
-    throw new Error('Transaction validation not implemented - this is your assignment!');
+    transaction.inputs.forEach(input => {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (!utxo) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.UTXO_NOT_FOUND,
+          `UTXO not found: ${input.utxoId.txId}: ${input.utxoId.outputIndex}`
+        ));
+      }
+    });
+
+    let inputSum = 0;
+    let outputSum = 0;
+    transaction.inputs.forEach(input => {
+      const utxo = this.utxoPool.getUTXO(input.utxoId.txId, input.utxoId.outputIndex);
+      if (utxo) inputSum += utxo.amount;
+    });
+    transaction.outputs.forEach(output => outputSum += output.amount);
+    if (inputSum != outputSum) {
+      errors.push(createValidationError(
+        VALIDATION_ERRORS.AMOUNT_MISMATCH,
+        `Input and output amounts are mismatched`
+      ));
+    }
+
+    const transactionData = this.createTransactionDataForSigning_(transaction);
+    transaction.inputs.forEach(input => {
+      const isValid = verify(transactionData, input.signature, input.owner);
+      if (!isValid) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.INVALID_SIGNATURE,
+          `${input.owner} signature is invalid`
+        ));
+      }
+    });
+
+    const seen: string[] = [];
+    transaction.inputs.forEach(input => {
+      const utxoKey = `${input.utxoId.txId}:${input.utxoId.outputIndex}`;
+
+      if (seen.includes(utxoKey)) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.DOUBLE_SPENDING,
+          `UTXO referenced multiple times in same transaction: ${utxoKey}`
+        ));
+      } else {
+        seen.push(utxoKey);
+      }
+
+    });
+
+    transaction.outputs.forEach(output => {
+      if (output.amount == 0) {
+        errors.push(createValidationError(
+          VALIDATION_ERRORS.ZERO_AMOUNT,
+          `Output amount is zero`
+        ));
+      }
+    });
 
     return {
       valid: errors.length === 0,
