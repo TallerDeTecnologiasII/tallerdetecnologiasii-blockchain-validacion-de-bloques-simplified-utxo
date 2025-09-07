@@ -253,9 +253,55 @@ describe('UTXO System Tests', () => {
 
         const result = validator.validateTransaction(transaction);
         expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.NEGATIVE_AMOUNT)).toBe(true);
+        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.ZERO_AMOUNT)).toBe(true);
       });
     });
+
+
+    describe('Extra Tests', () => {
+      test('REQUIRED: should reject empty inputs', () => {
+        const aliceUTXOs = utxoPool.getUTXOsForOwner(alice.publicKey);
+        const transaction = TransactionBuilder.createTransaction(
+          [],
+          [
+            { amount: 300, recipient: bob.publicKey },
+            { amount: 700, recipient: alice.publicKey }
+          ]
+        );
+
+        const result = validator.validateTransaction(transaction);
+        expect(result.valid).toBe(false);
+          expect(result.errors.some(e => e.code === VALIDATION_ERRORS.EMPTY_INPUTS)).toBe(true);
+      });
+
+      test('REQUIRED: should reject empty outputs', () => {
+        const aliceUTXOs = utxoPool.getUTXOsForOwner(alice.publicKey);
+        const transaction = TransactionBuilder.createTransaction(
+          [{ utxo: aliceUTXOs[0], privateKey: alice.privateKey }],
+          []
+        );
+
+        const result = validator.validateTransaction(transaction);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.code === VALIDATION_ERRORS.EMPTY_OUTPUTS)).toBe(true);
+      });
+      
+      test('REQUIRED: should reject negative-amount outputs', () => {
+          const aliceUTXOs = utxoPool.getUTXOsForOwner(alice.publicKey);
+          const transaction = TransactionBuilder.createTransaction(
+            [{ utxo: aliceUTXOs[0], privateKey: alice.privateKey }],
+            [
+              { amount: -200, recipient: bob.publicKey },
+              { amount: 1000, recipient: alice.publicKey }
+            ]
+          );
+
+          const result = validator.validateTransaction(transaction);
+          expect(result.valid).toBe(false);
+          expect(result.errors.some(e => e.code === VALIDATION_ERRORS.NEGATIVE_AMOUNT)).toBe(true);
+      });
+    });
+
 
     // 💡 BONUS CHALLENGE: Binary Encoding
     // Uncomment the describe.skip line below (remove .skip) when you're ready to implement binary encoding!
