@@ -1,5 +1,7 @@
 import { UTXOPoolManager } from './utxo-pool';
 import { generateKeyPair } from './utils/crypto';
+import { getEncodingEfficiency } from './utils/binary-encoding';
+
 import { TransactionBuilder } from './transaction-builder';
 
 // Demo script showing the UTXO system in action
@@ -64,7 +66,7 @@ function main() {
     utxoPool.processTransaction(tx2);
     console.log('Transaction processed');
   }
-
+  console.log(getEncodingEfficiency(tx1));
   // Final balances
   console.log('\n💰 Final balances:');
   console.log(`Alice: ${utxoPool.getBalance(alice.publicKey)}`);
